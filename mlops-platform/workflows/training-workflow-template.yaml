@@ -1,0 +1,64 @@
+# Register once with:
+#   kubectl apply -f workflows/training-workflow-template.yaml
+# Airflow creates a Workflow from this template on every DAG run (see
+# airflow_dags/mlops_training_pipeline.py).
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: mlops-training
+  namespace: mlops
+spec:
+  entrypoint: train
+  arguments:
+    parameters:
+      - name: image
+        value: "your-registry/mlops-training:latest"
+      - name: dvc-bucket
+        value: "your-mlops-bucket"
+      - name: run-id
+        value: "manual"
+
+  templates:
+    - name: train
+      inputs:
+        parameters:
+          - name: image
+          - name: dvc-bucket
+          - name: run-id
+      container:
+        image: "{{inputs.parameters.image}}"
+        command: ["/bin/sh", "-c"]
+        args:
+          - >
+            set -eux &&
+            (dvc pull -f || echo "nothing to pull yet, continuing") &&
+            dvc repro &&
+            dvc push &&
+            python3 -c "
+            import boto3, os
+            bucket = os.environ['DVC_BUCKET']
+            run_id = os.environ['RUN_ID']
+            client = boto3.client('s3')
+            client.upload_file('model/model.joblib', bucket, f'models/{run_id}/model.joblib')
+            client.upload_file('model/model.joblib', bucket, 'models/latest/model.joblib')
+            print('Uploaded model to s3://' + bucket + '/models/' + run_id + '/model.joblib')
+            "
+        env:
+          - name: DVC_BUCKET
+            value: "{{inputs.parameters.dvc-bucket}}"
+          - name: RUN_ID
+            value: "{{inputs.parameters.run-id}}"
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+      outputs:
+        parameters:
+          - name: metrics
+            valueFrom:
+              path: /app/metrics/eval.json
+          - name: model-uri
+            value: "s3://{{inputs.parameters.dvc-bucket}}/models/{{inputs.parameters.run-id}}/"

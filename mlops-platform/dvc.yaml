@@ -1,0 +1,33 @@
+stages:
+  prepare:
+    cmd: python pipelines/prepare.py
+    deps:
+      - pipelines/prepare.py
+    params:
+      - prepare.test_size
+      - prepare.random_state
+    outs:
+      - data/train.csv
+      - data/test.csv
+
+  train:
+    cmd: python pipelines/train.py
+    deps:
+      - pipelines/train.py
+      - data/train.csv
+    params:
+      - train.n_estimators
+      - train.max_depth
+      - train.random_state
+    outs:
+      - model/model.joblib
+
+  evaluate:
+    cmd: python pipelines/evaluate.py
+    deps:
+      - pipelines/evaluate.py
+      - model/model.joblib
+      - data/test.csv
+    metrics:
+      - metrics/eval.json:
+          cache: false

@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars and fill in your values.
+
+aws_region        = "ap-south-1"
+key_name           = "your-existing-ec2-keypair-name"
+allowed_ssh_cidr   = "YOUR_PUBLIC_IP/32"   # tighten this — 0.0.0.0/0 is fine only for a throwaway PoC
+kubeconfig_bucket  = "your-mlops-bucket"   # same bucket you'll use for DVC, or a separate one
+
+# Sizing — reduce if you're cost-constrained, increase if pods get stuck Pending
+master_instance_type = "t3.large"
+worker_instance_type = "t3.xlarge"
+worker_count          = 2

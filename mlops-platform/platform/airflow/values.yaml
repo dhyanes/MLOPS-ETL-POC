@@ -1,0 +1,70 @@
+executor: KubernetesExecutor
+
+images:
+  airflow:
+    repository: apache/airflow
+    tag: 2.9.3
+
+# PoC sizing — bump these if the scheduler/webserver get OOMKilled
+webserver:
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: 500m, memory: 1Gi }
+
+scheduler:
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: 500m, memory: 1Gi }
+
+# Load DAGs from a git repo on a sync interval — point this at your repo.
+dags:
+  gitSync:
+    enabled: true
+    repo: "https://github.com/your-org/your-mlops-repo.git"
+    branch: main
+    subPath: "airflow_dags"
+    wait: 30
+
+# Mount the kube config implicitly via the in-cluster service account —
+# Airflow pods talk to the K8s API using this SA, so it needs RBAC to manage
+# Argo Workflow and KServe InferenceService custom resources.
+rbac:
+  create: true
+
+extraEnv:
+  - name: AIRFLOW__CORE__LOAD_EXAMPLES
+    value: "False"
+
+webserverSecretKeySecretName: ""
+
+service:
+  type: NodePort
+
+# Custom RBAC: the airflow-worker service account needs to create/read
+# Argo Workflow and KServe InferenceService objects in the mlops namespace.
+extraManifests:
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: mlops-orchestration
+      namespace: mlops
+    rules:
+      - apiGroups: ["argoproj.io"]
+        resources: ["workflows", "workflowtemplates"]
+        verbs: ["create", "get", "list", "watch", "delete"]
+      - apiGroups: ["serving.kserve.io"]
+        resources: ["inferenceservices"]
+        verbs: ["create", "get", "list", "watch", "update", "patch"]
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: mlops-orchestration-binding
+      namespace: mlops
+    subjects:
+      - kind: ServiceAccount
+        name: airflow-worker
+        namespace: airflow
+    roleRef:
+      kind: Role
+      name: mlops-orchestration
+      apiGroup: rbac.authorization.k8s.io

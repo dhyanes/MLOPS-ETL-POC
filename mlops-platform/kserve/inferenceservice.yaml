@@ -1,0 +1,33 @@
+# Apply with: kubectl apply -f kserve/inferenceservice.yaml
+# Or let the Airflow DAG apply/patch this automatically after each successful
+# training run (see airflow_dags/mlops_training_pipeline.py).
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: mlops-model
+  namespace: mlops
+  annotations:
+    # RawDeployment mode (set cluster-wide in 04-install-kserve.sh) — plain
+    # Deployment + Service, no Istio sidecar, no scale-to-zero.
+    serving.kserve.io/deploymentMode: RawDeployment
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 2
+    sklearn:
+      storageUri: "s3://your-mlops-bucket/models/latest/"
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+    # AWS creds come from the node's IAM instance role (this is a
+    # self-managed cluster, not EKS, so there's no IRSA — every pod on the
+    # node can already reach IMDS). If you'd rather scope creds per-service,
+    # create a Secret with AWS keys, annotate it per KServe's S3 credential
+    # docs, and reference it via predictor.serviceAccountName instead.
+    env:
+      - name: AWS_DEFAULT_REGION
+        value: "ap-south-1"
